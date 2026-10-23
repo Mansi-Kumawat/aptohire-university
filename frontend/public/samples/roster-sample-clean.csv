@@ -1,0 +1,4 @@
+full_name,email,student_id_number,program,program_level,year,status
+Jaya Demo,jaya@unia.edu.test,AU2026-001,Computer Science,ug,1,enrolled
+Meera Demo,meera@unia.edu.test,AU2026-002,Information Technology,ug,2,enrolled
+Ravi Demo,ravi@unia.edu.test,AU2026-003,Computer Science,ug,3,dropout

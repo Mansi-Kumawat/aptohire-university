@@ -1,0 +1,16 @@
+{
+  "name": "aptohire-university",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["frontend", "backend"],
+  "scripts": {
+    "dev": "npm run dev --workspace @aptohire/university-frontend",
+    "build": "npm run build --workspace @aptohire/university-frontend",
+    "preview": "npm run preview --workspace @aptohire/university-frontend",
+    "typecheck": "npm run typecheck --workspace @aptohire/university-backend && npm run typecheck --workspace @aptohire/university-frontend",
+    "lint": "npm run lint --workspace @aptohire/university-backend && npm run lint --workspace @aptohire/university-frontend",
+    "test": "npm run test --workspace @aptohire/university-frontend",
+    "e2e": "npm run e2e --workspace @aptohire/university-frontend",
+    "db:types": "npm run db:types --workspace @aptohire/university-frontend"
+  }
+}

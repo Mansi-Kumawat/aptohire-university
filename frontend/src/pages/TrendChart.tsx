@@ -1,0 +1,6 @@
+import { ResponsiveContainer, CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
+import type { Overview } from '@aptohire/university-backend';
+export default function TrendChart({ data }: { data: Overview['trends'] }) {
+  const formatted = data.map((item) => ({ ...item, week: new Date(item.week_start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) }));
+  return <div className="chart-frame" aria-label="Verified students and reviews over time"><ResponsiveContainer width="100%" height="100%"><LineChart data={formatted} margin={{ top: 10, right: 20, left: -16, bottom: 2 }}><CartesianGrid stroke="var(--hairline)" vertical={false}/><XAxis dataKey="week" tick={{ fill: 'var(--moss)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--hairline)' }}/><YAxis tick={{ fill: 'var(--moss)', fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false}/><Tooltip contentStyle={{ border: '1px solid var(--hairline)', borderRadius: 10, fontFamily: 'var(--font-body)' }}/><Legend/><Line type="monotone" dataKey="verified_total" name="Verified students" stroke="var(--verdant-700)" strokeWidth={2.5} dot={false}/><Line type="monotone" dataKey="reviews" name="Reviews per week" stroke="var(--ember-500)" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>;
+}
