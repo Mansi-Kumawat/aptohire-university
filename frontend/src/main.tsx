@@ -6,6 +6,7 @@ import { ErrorBoundary } from './app/ErrorBoundary';
 import { Router } from './app/router';
 import './styles/tokens.css';
 import './styles/globals.css';
+import './styles/refresh.css';
 import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/instrument-sans';
 import '@fontsource/jetbrains-mono/400.css';
