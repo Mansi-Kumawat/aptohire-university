@@ -12,7 +12,7 @@ describe('column mapping', () => {
 describe('client roster validation', () => {
   const mapping = { full_name: 'Name', email: 'Email', student_id_number: 'Roll No', program: 'Branch', year: 'Year', status: 'Status' };
   it('accepts valid rows and skips invalid rows and duplicates', () => {
-    const result = parseRosterCsv('Name,Email,Roll No,Branch,Year,Status\nAsha,asha@example.test,1,CS,1,active\nBad,bad-email,2,IT,9,unknown\nAgain,asha@example.test,3,CS,2,enrolled', mapping);
+    const result = parseRosterCsv('Name,Email,Roll No,Branch,Year,Status\nAsha,asha@example.test,1,CS,1,active\nBad,bad-email,2,IT,11,unknown\nAgain,asha@example.test,3,CS,2,enrolled', mapping);
     expect(result.rows).toHaveLength(1);
     expect(result.errors.some((error) => error.field === 'email' && error.reason.includes('more than once'))).toBe(true);
     expect(result.errors.some((error) => error.field === 'year')).toBe(true);

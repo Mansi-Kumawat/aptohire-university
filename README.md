@@ -96,7 +96,7 @@ full_name,email,student_id_number,program,program_level,year,status
 Jaya Demo,jaya@unia.edu.test,AU2026-001,Computer Science,ug,1,enrolled
 ```
 
-Name is required. Each student should have an email or student ID so AptoHire can match them when they sign up. Year must be 1–7. Program level is `ug` or `pg`. Status accepts `incoming`, `enrolled`, `dropout` or `alumni` (common equivalents are normalized). Columns you do not map are removed in the browser before import.
+Name is required. Each student should have an email or student ID so AptoHire can match them when they sign up. Year must be 1–10. Program level is `ug` or `pg`. Status accepts `incoming`, `enrolled`, `dropout` or `alumni` (common equivalents are normalized). The roster import Edge Function accepts at most 500 rows per import. Columns you do not map are removed in the browser before import.
 
 - Deliberately messy validation sample: `frontend/public/samples/roster-sample.csv`.
 - Clean sample: `frontend/public/samples/roster-sample-clean.csv`.

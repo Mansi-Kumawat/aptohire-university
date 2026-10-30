@@ -116,7 +116,7 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
     students: {
       async list() { return getStudents('university_students_v'); },
       async detail(id) { return (await getStudents('university_students_v')).find((student) => student.id === id) ?? null; },
-      async skills(id) { const { data, error } = await client.from('university_student_skills_v').select('skill_name,family,level,score,verified_on').eq('student_id', id); if (error) throw error; return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({ skill_name: String(row.skill_name), family: String(row.family), level: String(row.level), score: Number(row.score), verified_on: String(row.verified_on) })); }
+      async skills(id) { const { data, error } = await client.from('university_student_skills_v').select('skill_name,family,level,score,verified_on').eq('student_id', id).order('score', { ascending: false }); if (error) throw error; return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({ skill_name: String(row.skill_name), family: String(row.family), level: String(row.level), score: Number(row.score), verified_on: String(row.verified_on) })); }
     },
     roster: {
       async list() { return getStudents('roster_entries'); },
@@ -150,13 +150,15 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
         const [overviewRows, funnelRows, skillsRows, trendsRows] = await Promise.all([rowsFor('university_overview_v', 'students_total,verified_students,active_this_month,projects_reviewed'), rowsFor('university_funnel_v', 'year,program,status,invited,registered,submitted,verified'), rowsFor('university_skills_v', 'skill_id,skill_name,family,verified_students,assessed_students,avg_score,open_jobs'), rowsFor('university_trends_v', 'week_start,verified_total,reviews,new_registrations')]);
         const head = (overviewRows[0] ?? {}) as Record<string, unknown>;
         const funnel: FunnelCounts = funnelRows.reduce<FunnelCounts>((total, row) => { const value = row as Record<string, unknown>; total.invited += Number(value.invited ?? 0); total.registered += Number(value.registered ?? 0); total.submitted += Number(value.submitted ?? 0); total.verified += Number(value.verified ?? 0); return total; }, { invited: 0, registered: 0, submitted: 0, verified: 0 });
-        return { students_total: Number(head.students_total ?? 0), verified_students: Number(head.verified_students ?? 0), active_this_month: Number(head.active_this_month ?? 0), projects_reviewed: Number(head.projects_reviewed ?? 0), funnel, funnel_rows: funnelRows.map((row) => ({ year: String(row.year ?? ''), program: row.program == null ? null : String(row.program), status: row.status == null ? null : String(row.status), invited: Number(row.invited ?? 0), registered: Number(row.registered ?? 0), submitted: Number(row.submitted ?? 0), verified: Number(row.verified ?? 0) })), skills: skillsRows.map((row) => ({ id: String(row.skill_id), name: String(row.skill_name), family: String(row.family), verified_students: Number(row.verified_students), assessed_students: Number(row.assessed_students), avg_score: Number(row.avg_score ?? 0), open_jobs: Number(row.open_jobs ?? 0) })), trends: trendsRows as { week_start: string; verified_total: number; reviews: number; new_registrations: number }[] };
+        return { students_total: Number(head.students_total ?? 0), verified_students: Number(head.verified_students ?? 0), active_this_month: Number(head.active_this_month ?? 0), projects_reviewed: Number(head.projects_reviewed ?? 0), funnel, funnel_rows: funnelRows.map((row) => ({ year: String(row.year ?? ''), program: row.program == null ? null : String(row.program), status: row.status == null ? null : String(row.status), invited: Number(row.invited ?? 0), registered: Number(row.registered ?? 0), submitted: Number(row.submitted ?? 0), verified: Number(row.verified ?? 0) })), skills: skillsRows.map((row) => ({ id: String(row.skill_id), name: String(row.skill_name), family: String(row.family), verified_students: Number(row.verified_students), assessed_students: Number(row.assessed_students), avg_score: row.avg_score == null ? null : Number(row.avg_score), open_jobs: Number(row.open_jobs ?? 0) })), trends: trendsRows as { week_start: string; verified_total: number; reviews: number; new_registrations: number }[] };
       },
       async trends() { return (await rowsFor('university_trends_v', 'week_start,verified_total,reviews,new_registrations')) as { week_start: string; verified_total: number; reviews: number; new_registrations: number }[]; }
     },
     placements: {
       async list() {
-        return (await rowsFor('placements', 'student_id,roster_entry_id,status,organization_name_text,role_text,source,updated_at'))
+        const uni = await currentUniversity();
+        if (!uni) return [];
+        return (await readPaged('placements', 'student_id,roster_entry_id,status,organization_name_text,role_text,source,updated_at', 'updated_at', uni.id))
           .map(detailPlacement);
       },
       async update(row) {
@@ -201,7 +203,7 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
         if (error) throw error;
       }
     },
-    demand: { async list() { return (await rowsFor('university_demand_v', 'id,skill_name,jobs_count,reasons,last_posted_at')).map((row) => demandSchema.parse({ id: String(row.id), skill_name: String(row.skill_name), jobs_count: Number(row.jobs_count), reasons: row.reasons ?? {}, last_posted_at: String(row.last_posted_at) })); } },
+    demand: { async list() { return (await rowsFor('university_demand_v', 'id,skill_name,jobs_count,reasons,last_posted_at')).map((row) => demandSchema.parse({ id: String(row.id), skill_name: String(row.skill_name), jobs_count: Number(row.jobs_count), reasons: row.reasons ?? {}, last_posted_at: row.last_posted_at == null ? '' : String(row.last_posted_at) })).filter((row) => row.jobs_count > 0); } },
     directory: {
       async list() {
         const [orgRows, jobRows] = await Promise.all([rowsFor('public_organizations', 'id,name,kind,size,website,verified'), rowsFor('public_jobs', 'id,organization_id,title,mode,location,status')]);
@@ -209,10 +211,10 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
       }
     },
     notifications: {
-      async list() { const { data, error } = await client.from('notifications').select('id,kind,payload,read_at,created_at').order('created_at', { ascending: false }).limit(50); if (error) throw error; return (data ?? []).map((row) => ({ id: String(row.id), kind: String(row.kind), title: String((row.payload as Record<string, unknown> | null)?.title ?? row.kind), detail: String((row.payload as Record<string, unknown> | null)?.detail ?? ''), created_at: String(row.created_at), read_at: row.read_at as string | null })); },
-      async markRead(id) { let query = client.from('notifications').update({ read_at: new Date().toISOString() }).is('read_at', null); if (id) query = query.eq('id', id); const { error } = await query; if (error) throw error; }
+      async list() { const { data: auth, error: authError } = await client.auth.getUser(); if (authError) throw authError; if (!auth.user) return []; const { data, error } = await client.from('notifications').select('id,kind,payload,read_at,created_at').eq('user_id', auth.user.id).order('created_at', { ascending: false }).limit(50); if (error) throw error; return (data ?? []).map((row) => ({ id: String(row.id), kind: String(row.kind), title: String((row.payload as Record<string, unknown> | null)?.title ?? row.kind), detail: String((row.payload as Record<string, unknown> | null)?.detail ?? ''), created_at: String(row.created_at), read_at: row.read_at as string | null })); },
+      async markRead() { throw new Error('Marking notifications as read is not available in the current backend contract.'); }
     },
-    config: { async getPublic() { const { data, error } = await client.from('public_config').select('key,value').in('key', ['PASS_MARK', 'BORDERLINE']); if (error) throw error; const config = Object.fromEntries((data ?? []).map((item) => [item.key, item.value])); const boundary = config.BORDERLINE as number[] | undefined; return { passMark: Number(config.PASS_MARK ?? 50), borderline: [Number(boundary?.[0] ?? 40), Number(boundary?.[1] ?? 60)] }; } },
+    config: { async getPublic() { const { data, error } = await client.from('public_config').select('key,value').in('key', ['PASS_MARK', 'BORDERLINE_LOW', 'BORDERLINE_HIGH']); if (error) throw error; const config = Object.fromEntries((data ?? []).map((item) => [item.key, item.value])); return { passMark: Number(config.PASS_MARK ?? 50), borderline: [Number(config.BORDERLINE_LOW ?? 40), Number(config.BORDERLINE_HIGH ?? 60)] as [number, number] }; } },
     account: { async current() { const session = await client.auth.getUser(); return { email: session.data.user?.email ?? '', name: String(session.data.user?.user_metadata.full_name ?? '') }; } }
   };
 }

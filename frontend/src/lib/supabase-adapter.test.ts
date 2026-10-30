@@ -15,6 +15,7 @@ class QueryStub {
   select(...args: unknown[]) { return this.add('select', ...args); }
   eq(...args: unknown[]) { return this.add('eq', ...args); }
   is(...args: unknown[]) { return this.add('is', ...args); }
+  in(...args: unknown[]) { return this.add('in', ...args); }
   order(...args: unknown[]) { return this.add('order', ...args); }
   range(...args: unknown[]) { return this.add('range', ...args); }
   limit(...args: unknown[]) { return this.add('limit', ...args); }
@@ -38,6 +39,7 @@ function makeClient(existingPlacement: { id: string } | null = null) {
     auth: {
       signInWithPassword: async () => ({ data: { user: demoUser }, error: null }),
       getSession: async () => ({ data: { session: { user: demoUser } }, error: null }),
+      getUser: async () => ({ data: { user: demoUser }, error: null }),
     },
     from(table: string) {
       const query = new QueryStub(table, (current, terminal) => {
@@ -45,6 +47,13 @@ function makeClient(existingPlacement: { id: string } | null = null) {
           return { data: { id: 'uni-1', name: 'Demo University', short_name: 'Demo', kind: 'university', tier: 'tier2', city: 'Jaipur', state: 'Rajasthan', status: 'approved', reference: null }, error: null };
         }
         if (current.table === 'profiles') return { data: { role: 'university' }, error: null };
+        if (current.table === 'public_config') return { data: [{ key: 'PASS_MARK', value: 61 }, { key: 'BORDERLINE_LOW', value: 42 }, { key: 'BORDERLINE_HIGH', value: 58 }], error: null };
+        if (current.table === 'university_overview_v') return { data: [{ students_total: 2, verified_students: 1, active_this_month: 1, projects_reviewed: 3 }], error: null };
+        if (current.table === 'university_funnel_v') return { data: [{ year: 2, program: 'Engineering', status: 'enrolled', invited: 2, registered: 2, submitted: 1, verified: 1 }], error: null };
+        if (current.table === 'university_skills_v') return { data: [{ skill_id: 'skill-1', skill_name: 'Testing', family: 'Web', verified_students: 0, assessed_students: 0, avg_score: null, open_jobs: 0 }], error: null };
+        if (current.table === 'university_trends_v') return { data: [], error: null };
+        if (current.table === 'university_demand_v') return { data: [{ id: 'skill-1', skill_name: 'Testing', jobs_count: 0, reasons: {}, last_posted_at: null }], error: null };
+        if (current.table === 'notifications') return { data: [{ id: 'note-1', kind: 'roster_update', payload: { detail: 'Roster updated' }, read_at: null, created_at: '2026-10-30T09:00:00.000Z' }], error: null };
         if (current.table === 'placements' && terminal === 'maybeSingle') {
           return { data: existingPlacement, error: null };
         }
@@ -72,6 +81,42 @@ describe('University Supabase adapter contract alignment', () => {
     expect(profileQuery?.operations.find((operation) => operation.name === 'select')?.args[0]).toBe('role');
     expect(String(profileQuery?.operations.find((operation) => operation.name === 'select')?.args[0])).not.toContain('display_name');
     expect(signedIn).toMatchObject({ displayName: 'Asha Demo', role: 'university', universityId: 'uni-1' });
+  });
+
+  it('reads configured public threshold keys from the frozen public_config view', async () => {
+    const { backend, queries } = makeClient();
+    const config = await backend.config.getPublic();
+    const query = queries.find((item) => item.table === 'public_config');
+    expect(config).toEqual({ passMark: 61, borderline: [42, 58] });
+    expect(query?.operations.find((operation) => operation.name === 'in')).toEqual({ name: 'in', args: ['key', ['PASS_MARK', 'BORDERLINE_LOW', 'BORDERLINE_HIGH']] });
+  });
+
+  it('preserves null averages instead of displaying zero for a skill with no verified scores', async () => {
+    const { backend } = makeClient();
+    const overview = await backend.analytics.overview();
+    expect(overview.skills[0]?.avg_score).toBeNull();
+  });
+
+  it('omits demand rows with no open approved-organization jobs', async () => {
+    const { backend } = makeClient();
+    expect(await backend.demand.list()).toEqual([]);
+  });
+
+  it('scopes placement reads to the current university', async () => {
+    const { backend, queries } = makeClient();
+    await backend.placements.list();
+    const query = queries.find((item) => item.table === 'placements');
+    expect(query?.operations).toContainEqual({ name: 'eq', args: ['university_id', 'uni-1'] });
+  });
+
+  it('reads notifications only for the signed-in user and does not attempt unsupported writes', async () => {
+    const { backend, queries } = makeClient();
+    const notes = await backend.notifications.list();
+    const query = queries.find((item) => item.table === 'notifications');
+    expect(notes[0]).toMatchObject({ id: 'note-1', title: 'roster_update', detail: 'Roster updated' });
+    expect(query?.operations).toContainEqual({ name: 'eq', args: ['user_id', 'user-1'] });
+    await expect(backend.notifications.markRead()).rejects.toThrow(/not available in the current backend contract/i);
+    expect(query?.operations.some((operation) => operation.name === 'update')).toBe(false);
   });
 
   it('uses the authorized student projection and only granted direct roster columns', async () => {

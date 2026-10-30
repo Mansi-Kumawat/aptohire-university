@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const lifeStatusSchema = z.enum(['incoming', 'enrolled', 'dropout', 'alumni']);
 export const placementStatusSchema = z.enum(['placed', 'not_placed', 'unknown']);
-export const skillSchema = z.object({ id: z.string(), name: z.string(), family: z.string(), verified_students: z.number(), assessed_students: z.number(), avg_score: z.number(), open_jobs: z.number() });
+export const skillSchema = z.object({ id: z.string(), name: z.string(), family: z.string(), verified_students: z.number(), assessed_students: z.number(), avg_score: z.number().nullable(), open_jobs: z.number() });
 export const studentSchema = z.object({
   id: z.string(), full_name: z.string(), email: z.string().nullable(), program: z.string().nullable(), program_level: z.enum(['ug', 'pg']), year: z.number().nullable(), status: lifeStatusSchema,
   verification: z.enum(['roster', 'student_id', 'unverified']).nullable(), claimed: z.boolean(), verified_skills_count: z.number(), last_activity: z.string().nullable(), placement_status: placementStatusSchema, registered_at: z.string().nullable(),
@@ -15,7 +15,7 @@ export const rosterRowSchema = z.object({
   student_id_number: z.string().trim().max(120).optional().or(z.literal('')),
   program: z.string().trim().max(160).optional().or(z.literal('')),
   program_level: z.enum(['ug', 'pg']),
-  year: z.number().int().min(1).max(7).optional(),
+  year: z.number().int().min(1).max(10).optional(),
   status: lifeStatusSchema
 }).strict();
 export const importReportSchema = z.object({

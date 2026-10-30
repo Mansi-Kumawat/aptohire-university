@@ -28,7 +28,7 @@ export function parseRosterCsv(text: string, headerMap: Record<string, string>) 
   parsed.data.forEach((source, index) => {
     const row: Record<string, unknown> = { full_name: '', program_level: 'ug', status: 'enrolled' };
     for (const [canonical, sourceHeader] of Object.entries(headerMap)) if (sourceHeader) row[canonical] = source[sourceHeader]?.trim() ?? '';
-    if (row.year) { const match = String(row.year).trim().match(/^(?:year\s*)?([1-7])$/i); row.year = match ? Number(match[1]) : Number.NaN; }
+    if (row.year) { const match = String(row.year).trim().match(/^(?:year\s*)?(10|[1-9])$/i); row.year = match ? Number(match[1]) : Number.NaN; }
     row.status = normaliseStatus(String(row.status));
     if (row.program_level) row.program_level = ['pg','postgraduate','masters','master'].includes(String(row.program_level).toLowerCase()) ? 'pg' : 'ug';
     const rowErrors: { row: number; field: string; reason: string }[] = [];
