@@ -84,19 +84,24 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
       async signIn({ email, password }) {
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error || !data.user) throw new Error('We couldn’t sign you in. Check your details and try again.');
-        const { data: profile, error: profileError } = await client.from('profiles').select('role,display_name').eq('id', data.user.id).maybeSingle();
+        const { data: profile, error: profileError } = await client.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
         if (profileError) throw profileError;
         const membership = profile?.role === 'university' ? await currentUniversity() : null;
-        return { email: data.user.email ?? email, displayName: String(profile?.display_name ?? 'University staff'), role: (profile?.role ?? null) as 'university' | 'student' | 'organization' | 'admin' | null, universityId: membership?.id ?? null };
+        const metadataName = data.user.user_metadata?.full_name;
+        const displayName = typeof metadataName === 'string' && metadataName.trim() ? metadataName.trim() : data.user.email?.split('@')[0] ?? 'University staff';
+        return { email: data.user.email ?? email, displayName, role: (profile?.role ?? null) as 'university' | 'student' | 'organization' | 'admin' | null, universityId: membership?.id ?? null };
       },
       async signOut(scope = 'local') { const { error } = await client.auth.signOut({ scope }); if (error) throw error; },
       async getSession() {
         const { data } = await client.auth.getSession();
         if (!data.session?.user) return null;
         const user = data.session.user;
-        const { data: profile } = await client.from('profiles').select('role,display_name').eq('id', user.id).maybeSingle();
+        const { data: profile, error } = await client.from('profiles').select('role').eq('id', user.id).maybeSingle();
+        if (error) throw error;
         const uni = profile?.role === 'university' ? await currentUniversity() : null;
-        return { email: user.email ?? '', displayName: String(profile?.display_name ?? 'University staff'), role: (profile?.role ?? null) as 'university' | 'student' | 'organization' | 'admin' | null, universityId: uni?.id ?? null };
+        const metadataName = user.user_metadata?.full_name;
+        const displayName = typeof metadataName === 'string' && metadataName.trim() ? metadataName.trim() : user.email?.split('@')[0] ?? 'University staff';
+        return { email: user.email ?? '', displayName, role: (profile?.role ?? null) as 'university' | 'student' | 'organization' | 'admin' | null, universityId: uni?.id ?? null };
       },
       async signUp({ email, password, name, reference }) { const { error } = await client.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: `${window.location.origin}/auth/callback?ref=${encodeURIComponent(reference ?? '')}` } }); if (error) throw error; },
       async completeSignup({ reference }) { const { error } = await client.functions.invoke('complete-signup', { body: { portal: 'university', application_ref: reference || undefined } }); if (error) throw error; },

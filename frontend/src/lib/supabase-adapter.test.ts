@@ -33,12 +33,18 @@ class QueryStub {
 
 function makeClient(existingPlacement: { id: string } | null = null) {
   const queries: QueryStub[] = [];
+  const demoUser = { id: 'user-1', email: 'staff@university.test', user_metadata: { full_name: 'Asha Demo' } };
   const client = {
+    auth: {
+      signInWithPassword: async () => ({ data: { user: demoUser }, error: null }),
+      getSession: async () => ({ data: { session: { user: demoUser } }, error: null }),
+    },
     from(table: string) {
       const query = new QueryStub(table, (current, terminal) => {
         if (current.table === 'my_university_v') {
           return { data: { id: 'uni-1', name: 'Demo University', short_name: 'Demo', kind: 'university', tier: 'tier2', city: 'Jaipur', state: 'Rajasthan', status: 'approved', reference: null }, error: null };
         }
+        if (current.table === 'profiles') return { data: { role: 'university' }, error: null };
         if (current.table === 'placements' && terminal === 'maybeSingle') {
           return { data: existingPlacement, error: null };
         }
@@ -59,6 +65,15 @@ function makeClient(existingPlacement: { id: string } | null = null) {
 }
 
 describe('University Supabase adapter contract alignment', () => {
+  it('looks up only the role column and derives the staff name from Auth metadata', async () => {
+    const { backend, queries } = makeClient();
+    const signedIn = await backend.auth.signIn({ email: 'staff@university.test', password: 'demo-password' });
+    const profileQuery = queries.find((query) => query.table === 'profiles');
+    expect(profileQuery?.operations.find((operation) => operation.name === 'select')?.args[0]).toBe('role');
+    expect(String(profileQuery?.operations.find((operation) => operation.name === 'select')?.args[0])).not.toContain('display_name');
+    expect(signedIn).toMatchObject({ displayName: 'Asha Demo', role: 'university', universityId: 'uni-1' });
+  });
+
   it('uses the authorized student projection and only granted direct roster columns', async () => {
     const { backend, queries } = makeClient();
     const roster = await backend.roster.list();
