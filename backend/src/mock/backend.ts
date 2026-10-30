@@ -9,8 +9,9 @@ const mockAccounts = [
 ];
 
 const initialStudentsA=studentsA.map((row)=>({...row}));const initialStudentsB=studentsB.map((row)=>({...row}));const initialStudentsC=studentsC.map((row)=>({...row}));
-const placementsB=studentsB.map((s)=>({student_id:s.id,status:s.placement_status,organization_name_text:'',role_text:'',source:'university' as const,updated_at:new Date().toISOString()}));
-const placementsC=studentsC.map((s)=>({student_id:s.id,status:s.placement_status,organization_name_text:'',role_text:'',source:'university' as const,updated_at:new Date().toISOString()}));
+const placementForStudent=(student:Student)=>({student_id:student.claimed?student.id:null,roster_entry_id:student.claimed?null:student.id,status:student.placement_status,organization_name_text:'',role_text:'',source:'university' as const,updated_at:new Date().toISOString()});
+const placementsB=studentsB.map(placementForStudent);
+const placementsC=studentsC.map(placementForStudent);
 const initialPlacementsA=placementsA.map((row)=>({...row}));
 function restore<T>(target:T[],source:T[]){target.splice(0,target.length,...source.map((row)=>({...row})));}
 function activeUniversity() {
@@ -58,7 +59,7 @@ export function createMockBackend(): Backend {
     university: {
       async getMine() { await wait(); return activeUniversity(); },
       async simulateApproval() { await wait(); const uni = activeUniversity(); uni.status = 'approved'; notices = [{ id: `approval-${Date.now()}`, kind: 'application_decided', title: 'Your university is approved', detail: 'Your full portal access is now available.', created_at: new Date().toISOString(), read_at: null }, ...notices]; return uni; },
-      async resetDemo() { await wait(); restore(studentsA,initialStudentsA); restore(studentsB,initialStudentsB); restore(studentsC,initialStudentsC); restore(placementsA,initialPlacementsA); restore(placementsB,initialStudentsB.map((s)=>({student_id:s.id,status:s.placement_status,organization_name_text:'',role_text:'',source:'university' as const,updated_at:new Date().toISOString()}))); restore(placementsC,initialStudentsC.map((s)=>({student_id:s.id,status:s.placement_status,organization_name_text:'',role_text:'',source:'university' as const,updated_at:new Date().toISOString()}))); for(const uni of universities)if(uni.id==='uni-c')uni.status='pending';notices=[...notificationsSeed]; }
+      async resetDemo() { await wait(); restore(studentsA,initialStudentsA); restore(studentsB,initialStudentsB); restore(studentsC,initialStudentsC); restore(placementsA,initialPlacementsA); restore(placementsB,initialStudentsB.map(placementForStudent)); restore(placementsC,initialStudentsC.map(placementForStudent)); for(const uni of universities)if(uni.id==='uni-c')uni.status='pending';notices=[...notificationsSeed]; }
     },
     students: {
       async list(filters = {}) {
@@ -100,7 +101,14 @@ export function createMockBackend(): Backend {
     analytics: { async overview() { await wait(240); return overviewFor(activeUniversity().id); }, async trends() { await wait(220); return overviewFor(activeUniversity().id).trends; } },
     placements: {
       async list() { await wait(280); return placementsFor(activeUniversity().id); },
-      async update(row) { await wait(240); const found = placementsFor(activeUniversity().id).find((p) => p.student_id === row.student_id); if (found) Object.assign(found, row); }
+      async update(row) {
+        await wait(240);
+        const key = row.student_id ?? row.roster_entry_id;
+        const target = placementsFor(activeUniversity().id);
+        const found = target.find((placement) => (placement.student_id ?? placement.roster_entry_id) === key);
+        if (found) Object.assign(found, row);
+        else target.push({ ...row });
+      }
     },
     demand: { async list() { await wait(260); return demandsFor(activeUniversity().id).map((row) => demandSchema.parse(row)); } },
     directory: { async list() { await wait(260); return organizations; } },

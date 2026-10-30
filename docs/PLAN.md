@@ -16,7 +16,7 @@ Public: `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callb
 
 ## Mocked data and runtime assumptions
 
-The default mock provides three fictional universities, generated fictional students, analytics, jobs, placements and notifications. Mock sign-in is session-scoped; no network is needed. Mock analytics and organization entries are labelled **Sample data** in the UI. Supabase mode assumes object names in the supplied prompt until `docs/CONTRACT.md` is copied in; schema/view mismatches are `TODO(backend)` and must be verified before a live connection. Roster uploads use client parsing and the `roster-import` function; storage dry-run upload/deletion is not wired without the shared backend policy contract.
+The default mock provides three fictional universities, generated fictional students, analytics, jobs, placements and notifications. Mock sign-in is session-scoped; no network is needed. Mock analytics and organization entries are labelled **Sample data** in the UI. Supabase mode uses the shared contract copied to `docs/CONTRACT.md` and `docs/FROZEN-CONTRACTS.md`; the user-scoped adapter is aligned to the authorized university views, roster column grants, placement policies, and `roster-import` function. Roster CSV parsing and import reporting are wired to that function. No live Supabase credentials were available for a deployment-level integration test.
 
 ## Decisions
 

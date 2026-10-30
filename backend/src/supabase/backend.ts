@@ -4,21 +4,65 @@ import { demandSchema, importReportSchema, studentSchema, type Backend, type Fun
 /** Browser-safe adapter: all requests use the signed-in user's client and are scoped by database RLS. */
 export function createSupabaseBackend(client: SupabaseClient): Backend {
   const currentUniversity = async (): Promise<University | null> => {
-    const { data: member, error: memberError } = await client.from('university_members').select('university_id').limit(1).maybeSingle();
-    if (memberError) throw memberError;
-    if (!member?.university_id) return null;
-    const { data, error } = await client.from('universities').select('id,name,short_name,kind,tier,city,state,status,reference,status_note').eq('id', member.university_id).maybeSingle();
+    // This security-definer view returns only universities granted to the signed-in member.
+    const { data, error } = await client.from('my_university_v')
+      .select('id,name,short_name,kind,tier,city,state,status,reference,status_note')
+      .limit(1)
+      .maybeSingle();
     if (error) throw error;
     return data as University | null;
+  };
+  const readPaged = async (table: string, columns: string, orderColumn: string, universityId: string) => {
+    const resultRows: Record<string, unknown>[] = [];
+    // Supabase REST responses are paged; fetch every page rather than silently capping at 1,000.
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await client.from(table).select(columns)
+        .eq('university_id', universityId)
+        .order(orderColumn, { ascending: true })
+        .range(offset, offset + 999);
+      if (error) throw error;
+      const page = (data ?? []) as unknown as Record<string, unknown>[];
+      resultRows.push(...page);
+      if (page.length < 1000) break;
+    }
+    return resultRows;
   };
   const getStudents = async (table: 'university_students_v' | 'roster_entries'): Promise<Student[]> => {
     const uni = await currentUniversity();
     if (!uni) return [];
-    const cols = table === 'university_students_v' ? 'roster_entry_id,student_id,full_name,status,year,program_level,program,verification,claimed,verified_skills_count,last_activity,placement_status' : 'id,full_name,email,program,program_level,year,status';
-    const { data, error } = await client.from(table).select(cols).order('full_name').limit(1000);
-    if (error) throw error;
-    const resultRows = (data ?? []) as unknown as Record<string, unknown>[];
-    return resultRows.map((row) => studentSchema.parse({ id: String(row.student_id ?? row.roster_entry_id ?? row.id ?? ''), full_name: row.full_name, email: row.email ?? null, program: row.program ?? null, program_level: row.program_level ?? 'ug', year: row.year ?? null, status: row.status, verification: row.verification ?? null, claimed: row.claimed ?? false, verified_skills_count: row.verified_skills_count ?? 0, last_activity: row.last_activity ?? null, placement_status: row.placement_status ?? 'unknown', registered_at: null }));
+    // The view is the authorized source for names and derived student data. Direct roster access is
+    // deliberately limited to columns granted to authenticated University members (including email).
+    const viewRows = await readPaged(
+      'university_students_v',
+      'university_id,roster_entry_id,student_id,full_name,status,year,program_level,program,verification,claimed,verified_skills_count,last_activity,placement_status',
+      'roster_entry_id',
+      uni.id
+    );
+    const viewByRosterId = new Map(viewRows.map((row) => [String(row.roster_entry_id ?? ''), row]));
+    const rows = table === 'roster_entries'
+      ? await readPaged('roster_entries', 'id,university_id,email,program_level,year,status', 'id', uni.id)
+      : viewRows;
+    const students = rows.map((row) => {
+      const projected = table === 'roster_entries' ? viewByRosterId.get(String(row.id ?? '')) : row;
+      if (!projected) throw new Error('A roster record is missing its authorized student projection. Refresh and try again.');
+      return studentSchema.parse({
+        id: String(table === 'roster_entries' ? row.id ?? '' : row.student_id ?? row.roster_entry_id ?? ''),
+        roster_entry_id: table === 'roster_entries' ? String(row.id ?? '') : projected.roster_entry_id == null ? null : String(projected.roster_entry_id),
+        full_name: projected.full_name,
+        email: table === 'roster_entries' ? row.email ?? null : null,
+        program: projected.program ?? null,
+        program_level: projected.program_level ?? row.program_level ?? 'ug',
+        year: projected.year ?? row.year ?? null,
+        status: projected.status ?? row.status,
+        verification: projected.verification ?? null,
+        claimed: projected.claimed ?? false,
+        verified_skills_count: projected.verified_skills_count ?? 0,
+        last_activity: projected.last_activity ?? null,
+        placement_status: projected.placement_status ?? 'unknown',
+        registered_at: null
+      });
+    });
+    return students.sort((a, b) => a.full_name.localeCompare(b.full_name));
   };
   const rowsFor = async (table: string, columns: string) => {
     // Always project an explicit, privacy-reviewed column list; never fetch whole rows from analytics or public views.
@@ -26,7 +70,15 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
     if (error) throw error;
     return (data ?? []) as unknown as Record<string, unknown>[];
   };
-  const detailPlacement = (studentId: string, row: Record<string, unknown>) => ({ student_id: studentId, status: row.status as 'placed' | 'not_placed' | 'unknown', organization_name_text: String(row.organization_name_text ?? ''), role_text: String(row.role_text ?? ''), source: row.source as 'university' | 'student', updated_at: String(row.updated_at ?? '') });
+  const detailPlacement = (row: Record<string, unknown>) => ({
+    student_id: row.student_id == null ? null : String(row.student_id),
+    roster_entry_id: row.roster_entry_id == null ? null : String(row.roster_entry_id),
+    status: row.status as 'placed' | 'not_placed' | 'unknown',
+    organization_name_text: String(row.organization_name_text ?? ''),
+    role_text: String(row.role_text ?? ''),
+    source: row.source as 'university' | 'student',
+    updated_at: String(row.updated_at ?? '')
+  });
   return {
     auth: {
       async signIn({ email, password }) {
@@ -65,7 +117,28 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
       async list() { return getStudents('roster_entries'); },
       async importRows(rows, dryRun = false) { const uni = await currentUniversity(); if (!uni) throw new Error('No university membership is available.'); const { data, error } = await client.functions.invoke('roster-import', { body: { university_id: uni.id, source: { rows }, dry_run: dryRun } }); if (error) throw error; return importReportSchema.parse(data); },
       async update(id, patch) { const uni = await currentUniversity(); if (!uni) throw new Error('No university membership is available.'); const allowed = { year: patch.year, status: patch.status, program: patch.program, program_level: patch.program_level }; const { error } = await client.from('roster_entries').update(allowed).eq('id', id).eq('university_id', uni.id); if (error) throw error; },
-      async remove(id) { const uni = await currentUniversity(); if (!uni) throw new Error('No university membership is available.'); const { error } = await client.from('roster_entries').delete().eq('id', id).eq('university_id', uni.id).is('claimed_student_id', null); if (error) throw error; }
+      async remove(id) {
+        const uni = await currentUniversity();
+        if (!uni) throw new Error('No university membership is available.');
+        const { data: rosterEntry, error: lookupError } = await client.from('university_students_v')
+          .select('roster_entry_id,claimed')
+          .eq('university_id', uni.id)
+          .eq('roster_entry_id', id)
+          .maybeSingle();
+        if (lookupError) throw lookupError;
+        if (!rosterEntry?.roster_entry_id) throw new Error('Roster entry not found. Refresh and try again.');
+        if (rosterEntry.claimed) throw new Error('Claimed student records cannot be removed by University staff.');
+        // Do not filter on roster_entries.student_id: that identity-link column is intentionally
+        // ungranted to browser clients. The database DELETE policy independently enforces unclaimed-only.
+        const { data: deleted, error } = await client.from('roster_entries')
+          .delete()
+          .eq('id', id)
+          .eq('university_id', uni.id)
+          .select('id')
+          .maybeSingle();
+        if (error) throw error;
+        if (!deleted?.id) throw new Error('Only unclaimed roster entries can be removed.');
+      }
     },
     analytics: {
       async overview() {
@@ -77,8 +150,51 @@ export function createSupabaseBackend(client: SupabaseClient): Backend {
       async trends() { return (await rowsFor('university_trends_v', 'week_start,verified_total,reviews,new_registrations')) as { week_start: string; verified_total: number; reviews: number; new_registrations: number }[]; }
     },
     placements: {
-      async list() { return (await rowsFor('placements', 'student_id,status,organization_name_text,role_text,source,updated_at')).map((row) => detailPlacement(String(row.student_id), row)); },
-      async update(row) { const uni = await currentUniversity(); if (!uni) throw new Error('No university membership is available.'); const { error } = await client.from('placements').upsert({ ...row, source: 'university', university_id: uni.id }); if (error) throw error; }
+      async list() {
+        return (await rowsFor('placements', 'student_id,roster_entry_id,status,organization_name_text,role_text,source,updated_at'))
+          .map(detailPlacement);
+      },
+      async update(row) {
+        const uni = await currentUniversity();
+        if (!uni) throw new Error('No university membership is available.');
+        const rosterEntryId = row.roster_entry_id;
+        if (!rosterEntryId || row.student_id !== null) {
+          throw new Error('University placement updates are limited to unclaimed roster entries.');
+        }
+        const values = {
+          status: row.status,
+          organization_name_text: row.organization_name_text,
+          role_text: row.role_text,
+          source: 'university' as const
+        };
+        // The placements table has no unique upsert key for this subject. Locate and update
+        // the existing university-sourced outcome; otherwise insert one roster-scoped row.
+        const { data: existing, error: lookupError } = await client.from('placements')
+          .select('id')
+          .eq('university_id', uni.id)
+          .eq('roster_entry_id', rosterEntryId)
+          .eq('source', 'university')
+          .is('student_id', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lookupError) throw lookupError;
+        if (existing?.id) {
+          const { error } = await client.from('placements').update(values)
+            .eq('id', existing.id)
+            .eq('university_id', uni.id)
+            .eq('roster_entry_id', rosterEntryId)
+            .is('student_id', null);
+          if (error) throw error;
+          return;
+        }
+        const { error } = await client.from('placements').insert({
+          ...values,
+          university_id: uni.id,
+          roster_entry_id: rosterEntryId
+        });
+        if (error) throw error;
+      }
     },
     demand: { async list() { return (await rowsFor('university_demand_v', 'id,skill_name,jobs_count,reasons,last_posted_at')).map((row) => demandSchema.parse({ id: String(row.id), skill_name: String(row.skill_name), jobs_count: Number(row.jobs_count), reasons: row.reasons ?? {}, last_posted_at: String(row.last_posted_at) })); } },
     directory: {

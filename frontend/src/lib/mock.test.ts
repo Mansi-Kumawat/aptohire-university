@@ -16,6 +16,34 @@ describe('mock roster import', () => {
   });
 });
 
+describe('mock placements', () => {
+  it('lets university staff update an unclaimed roster placement by roster-entry id', async () => {
+    const backend = createMockBackend();
+    await backend.university.resetDemo();
+    await backend.auth.signIn({ email: 'tpo@unia.edu.test', password: 'demo' });
+    const unclaimed = (await backend.students.list()).find((student) => !student.claimed);
+    expect(unclaimed).toBeDefined();
+    await backend.placements.update({
+      student_id: null,
+      roster_entry_id: unclaimed!.id,
+      status: 'placed',
+      organization_name_text: 'Sample employer',
+      role_text: 'Graduate engineer',
+      source: 'university',
+      updated_at: new Date().toISOString()
+    });
+    const placement = (await backend.placements.list()).find((row) => row.roster_entry_id === unclaimed!.id);
+    expect(placement).toMatchObject({
+      student_id: null,
+      status: 'placed',
+      organization_name_text: 'Sample employer',
+      role_text: 'Graduate engineer',
+      source: 'university'
+    });
+    await backend.university.resetDemo();
+  });
+});
+
 describe('mock demo reset', () => {
   it('restores sample roster and pending university approval state', async () => {
     const backend=createMockBackend();await backend.university.resetDemo();await backend.auth.signIn({email:'tpo@unia.edu.test',password:'demo'});

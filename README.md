@@ -105,11 +105,12 @@ Student IDs are sent only to the roster import function over TLS; the app does n
 
 ## 7. Connect the shared Supabase project
 
-1. Copy the shared backend’s exact `docs/CONTRACT.md` into this repository at `docs/CONTRACT.md`. The adapter currently follows the object names in the university portal brief; the contract takes precedence.
-2. In `frontend/.env.local`, set `VITE_USE_MOCKS=false`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`.
-3. Keep the anon/publishable key public and rely on tested RLS. **Never put a service-role key or any privileged secret in this app.**
-4. Run `npm run db:types` after setting `SUPABASE_PROJECT_REF` in your shell.
-5. Before using real data, verify the optional views and columns listed in `docs/CONTRACT.md` and the final build report. Missing views should remain hidden rather than broadening access.
+The authoritative shared contract and frozen prompt contract are included in `docs/CONTRACT.md` and `docs/FROZEN-CONTRACTS.md`; the University-specific request schemas are in `docs/schemas/`. These are the source of truth for browser adapter requests and responses.
+
+1. In `frontend/.env.local`, set `VITE_USE_MOCKS=false`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`.
+2. Keep the anon/publishable key public and rely on tested RLS. **Never put a service-role key or any privileged secret in this app.**
+3. Run `npm run db:types` after setting `SUPABASE_PROJECT_REF` in your shell.
+4. Before using live data, verify the optional views and columns listed in the shared contract against the selected backend deployment. Missing views should remain hidden rather than broadening access.
 
 In Supabase, open **Authentication → URL Configuration** and allow:
 

@@ -53,7 +53,15 @@ export const overviewA: Overview = {
   ], skills: skillsA,
   trends: Array.from({ length: 26 }, (_, ix) => ({ week_start: new Date(Date.now() - (25 - ix) * 7 * 86400000).toISOString().slice(0, 10), verified_total: Math.max(2, Math.round(19 * (ix + 3) / 29)), reviews: 4 + (ix * 7) % 11, new_registrations: 1 + (ix * 3) % 7 }))
 };
-export const placementsA: Placement[] = studentsA.map((student, ix) => ({ student_id: student.id, status: student.placement_status, organization_name_text: student.placement_status === 'placed' ? ['Northwind Labs','Brightlane'][ix % 2] : '', role_text: student.placement_status === 'placed' ? ['Frontend intern','Junior developer'][ix % 2] : '', source: ix % 4 === 0 ? 'student' : 'university', updated_at: new Date(Date.now() - ix % 28 * 86400000).toISOString() }));
+export const placementsA: Placement[] = studentsA.map((student, ix) => ({
+  student_id: student.claimed ? student.id : null,
+  roster_entry_id: student.claimed ? null : student.id,
+  status: student.placement_status,
+  organization_name_text: student.placement_status === 'placed' ? ['Northwind Labs','Brightlane'][ix % 2] : '',
+  role_text: student.placement_status === 'placed' ? ['Frontend intern','Junior developer'][ix % 2] : '',
+  source: student.claimed && ix % 4 === 0 ? 'student' : 'university',
+  updated_at: new Date(Date.now() - ix % 28 * 86400000).toISOString()
+}));
 export const demandB: DemandRow[] = [{ id: 'b-demand', skill_name: 'Testing', jobs_count: 1, reasons: { no_eligible: 2, incomplete_assessments: 1, insufficient_evidence: 0, skills_mismatch: 4, opted_out: 0, not_assessed: 7 }, last_posted_at: '2026-10-04' }];
 export const overviewB: Overview = { students_total: 40, verified_students: 6, active_this_month: 9, projects_reviewed: 11, funnel: { invited: 40, registered: 24, submitted: 10, verified: 6 }, funnel_rows: [{year:'1',program:'Information Technology',status:'enrolled',invited:20,registered:12,submitted:5,verified:3},{year:'2',program:'Information Technology',status:'alumni',invited:20,registered:12,submitted:5,verified:3}], skills: skillsA.slice(0, 4).map((s) => ({ ...s, verified_students: Math.min(s.verified_students, 4), assessed_students: Math.min(s.assessed_students, 8), open_jobs: 2 })), trends: overviewA.trends.slice(-4) };
 export const overviewC: Overview = { ...overviewB, students_total: 6, verified_students: 2, active_this_month: 1, projects_reviewed: 3, funnel: { invited: 6, registered: 3, submitted: 2, verified: 1 }, funnel_rows: [{year:'1',program:'Computer Science',status:'enrolled',invited:2,registered:1,submitted:1,verified:0},{year:'2',program:'Computer Science',status:'enrolled',invited:2,registered:1,submitted:1,verified:1},{year:'3',program:'Computer Science',status:'enrolled',invited:2,registered:1,submitted:0,verified:0}] };

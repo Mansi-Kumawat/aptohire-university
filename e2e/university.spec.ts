@@ -83,6 +83,25 @@ test('roster edit dialog uses styled accessible dropdowns', async ({ page }) => 
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
+test('placement outcomes update unclaimed roster rows and keep claimed outcomes student-managed', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Aravalli Institute · Approved' }).click();
+  await page.goto('/placements');
+  const roster = page.getByRole('region', { name: 'Placement outcomes roster' });
+  const unclaimedRow = roster.getByRole('row', { name: /Aman Verma/ });
+  await unclaimedRow.getByRole('button', { name: 'Update' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Update placement' });
+  await dialog.getByRole('radio', { name: 'Placed' }).check();
+  await dialog.getByLabel('Organization name').fill('Sample employer');
+  await dialog.getByLabel('Role').fill('Graduate engineer');
+  await dialog.getByRole('button', { name: 'Save placement' }).click();
+  await expect(page.getByRole('status')).toContainText('Placement updated.');
+  await expect(unclaimedRow).toContainText('Sample employer');
+  const claimedRow = roster.getByRole('row', { name: /Aarav Sharma/ });
+  await expect(claimedRow).toContainText('Student-managed outcome');
+  await expect(claimedRow.getByRole('button', { name: 'Update' })).toHaveCount(0);
+});
+
 test('mobile roster cards include a visible edit action', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/login');
